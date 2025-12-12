@@ -1,0 +1,1318 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { ShoppingCart, Utensils, IceCream, Plus, Minus, X, Home, ChevronRight, Ban, MapPin, Truck, Clock, CreditCard, DollarSign, Zap, Loader2, Cake, Pizza, Heart, Cookie, Sunrise, Camera, Instagram, Copy } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+
+// --- CONFIGURAÇÃO FIREBASE ---
+// Variáveis globais fornecidas pelo ambiente
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+// Usamos um objeto vazio como fallback seguro
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+let db = null;
+let auth = null;
+
+// Inicializa o Firebase (se as configs existirem)
+if (Object.keys(firebaseConfig).length > 0) {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    auth = getAuth(app);
+}
+
+// --- DADOS ADICIONAIS AÇAÍ ---
+const ACAI_TOPPINGS = [
+    { name: "Banana", price: 0.01 },
+    { name: "Morango", price: 2.00 },
+    { name: "Leite Ninho", price: 1.00 },
+    { name: "Leite Condensado", price: 0.01 },
+    { name: "Creme de Ninho", price: 1.00 },
+    { name: "Nutella", price: 3.00 },
+    { name: "Amendoim", price: 1.00 },
+];
+// Base price for 250ml Açaí (ID 18)
+const ACAI_ID = 18;
+const ACAI_BASE_PRICE = 17.90; 
+
+// --- DADOS MOCK (PRODUTOS ATUALIZADOS) ---
+const initialProducts = [
+  // Categoria BOLOS
+  { 
+    id: 9, 
+    name: "Red velvet com Ninho e Morangos", 
+    price: 15.90, 
+    category: 'bolos', 
+    description: "Massa aveludada e macia, coberta com creme de leite Ninho cremoso e morangos fresquinhos no topo. Uma combinação elegante.", 
+    imageUrl: "https://i.imgur.com/3UDWhLR.png" 
+  },
+  { 
+    id: 2, 
+    name: "Bolo Cenoura com chocolate", 
+    price: 15.90, 
+    category: 'bolos', 
+    description: "Mini vulcão de cenoura: uma massa fofinha e úmida de bolo de cenoura, recheada com explosão de calda cremosa de chocolate que transborda a cada mordida. Um clássico em versão irresistível e perfeita para se deliciar sem culpa!", 
+    imageUrl: "https://i.imgur.com/aaUdL2b.png" 
+  },
+  {
+    id: 10,
+    name: "Chocolate com Morangos",
+    price: 15.90,
+    category: 'bolos', 
+    description: "Mini vulcão de chocolate: bolo fofinho e úmido de massa de chocolate, coberto com calda cremosa de chocolate 50% recheado e finalizado com morangos fresquinhos que trazem o toque perfeito de frescor e sabor. Uma combinação clássica e irresistível!",
+    imageUrl: "https://i.imgur.com/MMbQohl.png"
+  },
+  {
+    id: 13,
+    name: "Chocolatudo!!!",
+    price: 15.90, 
+    category: 'bolos', 
+    description: "Delicioso bolo de chocolate fofinho, coberto com uma cremosa calda de chocolate 50% cacau e finalizado com generosos granulados. Uma explosão de sabor intenso e equilibrado para os verdadeiros amantes de chocolate!",
+    imageUrl: "https://i.imgur.com/3Hva4Df.png"
+  },
+  {
+    id: 16,
+    name: "Bolo de Ferreiro com Nutella",
+    price: 16.90, 
+    category: 'bolos',
+    description: "Bolo Vulcão de Chocolate com Amendoim e Nutella. Massa macia e chocolatuda com pedacinhos crocantes de amendoim. Coberto com chocolate 50% intenso, finalizado com Nutella cremosa e amendoim torrado por cima.",
+    imageUrl: "https://i.imgur.com/OamNqov.png"
+  },
+  
+  // Categoria COPO DA FELICIDADE
+  {
+    id: 17, 
+    name: "Copo Oreo com Nutella",
+    price: 24.90, 
+    category: 'copo_felicidade',
+    description: "Primeira camada de creme de Ninho bem cremoso, seguida de biscoitos Oreo crocantes. Depois, uma camada generosa de chocolate 50%, finalizando com Nutella e mais Oreo por cima. Uma combinação que conquista no olhar... e vicia no sabor!",
+    imageUrl: "https://i.imgur.com/1EZRMVl.png"
+  },
+  {
+    id: 24, 
+    name: "Copo Maracujá com Brownie",
+    price: 24.90, 
+    category: 'copo_felicidade',
+    description: "Camadas de creme de maracujá bem cremoso, seguidas de chocolate 50% e pedaços de brownie macio. Depois, mais uma sequência irresistível de creme de maracujá e chocolate 50%, tudo finalizado com chantilly leve para completar essa explosão de sabor!",
+    imageUrl: "https://i.imgur.com/PypEwAz.png"
+  },
+  {
+    id: 25, 
+    name: "Copo Brawnie Dois Amores",
+    price: 22.90, 
+    category: 'copo_felicidade',
+    description: "Camadas de creme de Ninho (Leite) cremoso e Brigadeiro Clássico, intercaladas com pedaços macios e úmidos de brownie de chocolate. Uma combinação clássica dos dois amores do Brasil, perfeita para os chocólatras.",
+    imageUrl: "https://i.imgur.com/mMQtXDB.png"
+  },
+  {
+    id: 26, 
+    name: "Copo Encanto de Ninho e Morangos",
+    price: 22.90, 
+    category: 'copo_felicidade',
+    description: "Ninho com Morangos Camadas cremosas de creme de Ninho intercaladas com morangos frescos, criando um equilíbrio perfeito entre o doce e o azedinho da fruta. Finalizado com chantilly suave e um morango fresco por cima, trazendo aquele toque especial que conquista no primeiro olhar... e no primeiro sabor!",
+    imageUrl: "https://i.imgur.com/EgFhhwL.png"
+  },
+  {
+    id: 27, 
+    name: "Copo de Brownie com Ferreiro e Nutella",
+    price: 26.90, 
+    category: 'copo_felicidade',
+    description: "Brownie, Ferrero & Nutella Começa com uma camada de chocolate 50% com amendoim e Nutella, seguida de brownie macio no meio. Depois, mais chocolate 50% com amendoim e bastante Nutella, finalizando com Nutella cremosa por cima e um pedaço de brownie para completar essa explosão de sabor.",
+    imageUrl: "https://i.imgur.com/t6xeVDf.png"
+  },
+
+  // Categoria BROWNIES
+  { 
+    id: 20,
+    name: "Brownie De Ninho e Nutella",
+    price: 11.90, 
+    category: 'brownie',
+    description: "Brownie gourmet coberto com creme de Ninho, finalizado com Nutella e morango fresco. Uma combinação irresistível para adoçar seu Dia! 8x8",
+    imageUrl: "https://i.imgur.com/vWdYZ8K.png"
+  },
+  {
+    id: 21,
+    name: "Brownie Recheado com Nutella e Morangos",
+    price: 22.90, 
+    category: 'brownie',
+    description: "Duas camadas de brownie super molhadinho, recheado e coberto com creme de leite Ninho, finalizado com Nutella e morango fresco para aquele toque especial. Simples, irresistível e feito para adoçar seu Dia!",
+    imageUrl: "https://i.imgur.com/P1pprjF.png"
+  },
+  {
+    id: 22, 
+    name: "Brownie Ferreiro com Nutella",
+    price: 11.90, 
+    category: 'brownie',
+    description: "Um brownie super cremoso e chocolatudo, coberto com Nutella na medida certa e finalizado com amendoim torrado crocante. A mistura perfeita entre o doce intenso do chocolate e o toque salgado do amendoim, simplesmente irresistível",
+    imageUrl: "https://i.imgur.com/rmp3LtH.png" 
+  },
+  {
+    id: 23, 
+    name: "Brownie Duo com Oreo",
+    price: 11.90, 
+    category: 'brownie',
+    description: "Brownie macio e úmido, coberto com creme de chocolate e finalizado com pedaços crocantes de Oreo. Uma explosão de sabor em cada mordida!",
+    imageUrl: "https://i.imgur.com/8IbcWWj.png"
+  },
+  
+  // Categoria AÇAÍ
+  {
+    id: ACAI_ID, // 18
+    name: "Copo de Açaí 250ml",
+    price: ACAI_BASE_PRICE, 
+    category: 'acai',
+    description: "Copo de Açai cremoso e saboroso. Escolha seus acompanhamentos e saboreie.",
+    imageUrl: "https://i.imgur.com/OrErP8N.png"
+  },
+  
+  // Categoria SALGADOS (APENAS Empada de Camarão e Requeijão)
+  { 
+    id: 6, 
+    name: "Empada de Camarão e Requeijão", 
+    price: 12.00, // Preço sugerido
+    category: 'salgado', 
+    description: "Camarão Cremoso com Requeijão: Camarões selecionados salteados e envoltos em um cremoso molho e Requeijão com tempero caseiro e sabor marcante. Servido na marmitinha, é a combinação perfeita de praticidade e sabor em cada garfada!", 
+    imageUrl: "https://i.imgur.com/rV18DkJ.png" 
+  },
+  // IDs 4, 5 e 7 foram removidos conforme a solicitação do usuário.
+];
+
+// Mapeamento de categorias
+const categories = {
+  all: 'Todos os Produtos',
+  bolos: 'Bolos (Fina)', 
+  copo_felicidade: 'Copo da Felicidade', 
+  brownie: 'Brownies', 
+  acai: 'Açaí e Gelados', 
+  salgado: 'Salgados (Culinária Rústica)',
+};
+
+const PAYMENT_METHODS = [
+{ id: 'pix', name: 'Pix', icon: Zap, details: 'Pagamento instantâneo via QR Code ou chave Pix.' }
+];
+
+const DELIVERY_FEE = 2.99;
+
+// --- DADOS REAIS PIX ATUALIZADOS ---
+const REAL_PIX_KEY = '61.982.423/0001-49 (CNPJ)'; 
+const REAL_PIX_KEY_RAW = '61982423000149'; // A chave crua para copiar
+const REAL_PIX_QR_CODE_URL = 'https://i.imgur.com/BUa6qT4.png'; // NOVO QR CODE
+const REAL_PIX_RECIPIENT_NAME = 'Nome Empresarial - Doce É Ser Tapera'; 
+
+// --- LINKS INSTAGRAM FORNECIDOS PELO USUÁRIO ---
+const INSTAGRAM_POSTS = [
+    { id: 1, type: "Red Velvet", url: "https://www.instagram.com/p/DOpDYYekTzI/?img_index=2" },
+    { id: 2, type: "Brownie de Colher", url: "https://www.instagram.com/p/DOtYOWgEa4E/?img_index=1" },
+    { id: 3, type: "Bolo de Cenoura", url: "https://www.instagram.com/p/DPCR392EQCb/?img_index=1" },
+    { id: 4, type: "Chocolatudo", url: "https://www.instagram.com/p/DPh4DjNkYTw/" },
+    { id: 5, type: "Copo da Felicidade", url: "https://www.instagram.com/p/DOqtAqzDU2j/" },
+    { id: 6, type: "Empada de Camarão", url: "https://www.instagram.com/p/DQ2l6zjEZOq/" },
+];
+
+
+// --- FUNÇÕES DE PERSISTÊNCIA ---
+
+// Função para obter a referência do documento do carrinho
+const getCartDocRef = (userId) => {
+    if (!db || !userId) return null;
+    // Caminho: /artifacts/{appId}/users/{userId}/cart/current
+    const path = `/artifacts/${appId}/users/${userId}/cart/current`;
+    return doc(db, path);
+};
+
+// Função para salvar o carrinho no Firestore
+const saveCartToFirestore = async (userId, cartItems) => {
+    if (!db || !userId) return;
+    const cartRef = getCartDocRef(userId);
+    if (!cartRef) return;
+    
+    try {
+        // Usa setDoc para criar ou sobrescrever o documento 'current'
+        await setDoc(cartRef, { items: cartItems, updatedAt: new Date().toISOString() });
+    } catch (e) {
+        console.error("Erro ao guardar o carrinho: ", e);
+    }
+};
+
+// --- COMPONENTES ---
+
+// Componente de Customização do Açaí
+const AcaiCustomizationModal = ({ product, closeModal, setCart }) => {
+    // State para guardar os adicionais selecionados
+    const [selectedToppings, setSelectedToppings] = useState([]);
+
+    // Cálculo do preço
+    const totalToppingsPrice = useMemo(() => {
+        return selectedToppings.reduce((total, toppingName) => {
+            const topping = ACAI_TOPPINGS.find(t => t.name === toppingName);
+            return total + (topping ? topping.price : 0);
+        }, 0);
+    }, [selectedToppings]);
+
+    const totalFinalPrice = ACAI_BASE_PRICE + totalToppingsPrice;
+
+    // Toggle de seleção
+    const toggleTopping = (toppingName) => {
+        setSelectedToppings(prev => {
+            if (prev.includes(toppingName)) {
+                return prev.filter(name => name !== toppingName);
+            } else {
+                return [...prev, toppingName];
+            }
+        });
+    };
+
+    // Adiciona o item customizado ao carrinho
+    const handleAddToCart = () => {
+        const newItem = {
+            id: product.id,
+            uniqueId: Date.now().toString(), // Chave única para itens customizados (não agrupáveis)
+            name: product.name,
+            basePrice: ACAI_BASE_PRICE,
+            toppings: selectedToppings,
+            price: totalFinalPrice,
+            quantity: 1,
+            isCustom: true
+        };
+
+        setCart(prevCart => [...prevCart, newItem]);
+        closeModal();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto transform transition-all">
+                
+                {/* Cabeçalho do Modal */}
+                <div className="p-6 border-b sticky top-0 bg-white z-10 rounded-t-xl">
+                    <h3 className="text-3xl font-extrabold text-amber-700">{product.name}</h3>
+                    <p className="text-lg text-gray-600 mt-1">Crie o seu Açaí perfeito!</p>
+                    <button 
+                        onClick={closeModal} 
+                        className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                {/* Conteúdo Principal (Toppings) */}
+                <div className="p-6 space-y-4">
+                    <h4 className="text-xl font-bold text-gray-800 border-b pb-2">
+                        Selecione seus Adicionais <span className='text-sm font-normal text-amber-600'>(Opcional)</span>
+                    </h4>
+
+                    <div className="space-y-3">
+                        {ACAI_TOPPINGS.map(topping => {
+                            const isSelected = selectedToppings.includes(topping.name);
+                            return (
+                                <div 
+                                    key={topping.name} 
+                                    onClick={() => toggleTopping(topping.name)}
+                                    className={`flex justify-between items-center p-4 rounded-lg cursor-pointer transition duration-200 border-2 
+                                        ${isSelected ? 'border-amber-600 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                                >
+                                    <span className="font-semibold text-gray-800">{topping.name}</span>
+                                    <div className="flex items-center space-x-3">
+                                        <span className={`text-sm font-medium ${topping.price > 0.01 ? 'text-gray-600' : 'text-green-600 font-bold'}`}>
+                                            + R$ {topping.price.toFixed(2).replace('.', ',')}
+                                        </span>
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center border ${isSelected ? 'bg-amber-600 border-amber-600' : 'bg-white border-gray-400'}`}>
+                                            {isSelected ? <Check className="w-4 h-4 text-white" /> : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Resumo e Botão de Ação */}
+                <div className="p-6 bg-gray-100 rounded-b-xl sticky bottom-0 border-t">
+                    <div className="flex justify-between items-center mb-4">
+                        <span className="text-lg text-gray-700">Açaí Base ({product.price.toFixed(2).replace('.', ',')}):</span>
+                        <span className="font-bold">R$ {product.price.toFixed(2).replace('.', ',')}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-4">
+                        <span className="text-lg text-gray-700">Adicionais ({selectedToppings.length}):</span>
+                        <span className="font-bold text-amber-700">R$ {totalToppingsPrice.toFixed(2).replace('.', ',')}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                        <span className="text-xl font-extrabold text-gray-900">Total:</span>
+                        <span className="text-3xl font-extrabold text-green-600">R$ {totalFinalPrice.toFixed(2).replace('.', ',')}</span>
+                    </div>
+
+                    <button 
+                        onClick={handleAddToCart}
+                        className="w-full mt-4 bg-amber-700 text-white py-3 rounded-lg font-bold text-lg hover:bg-amber-800 transition duration-200 shadow-lg"
+                    >
+                        Adicionar ao Carrinho (R$ {totalFinalPrice.toFixed(2).replace('.', ',')})
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+// Icone Check que faltou no import para usar no modal
+const Check = ({ className }) => <svg className={className} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor"><path d="M5 13l4 4L19 7"/></svg>;
+
+
+// Componente de Cabeçalho de Etapas do Checkout
+const CheckoutStepper = ({ step }) => {
+    const steps = [
+        { id: 'cart', name: 'Carrinho' },
+        { id: 'delivery', name: 'Entrega' },
+        { id: 'payment', name: 'Pagamento' },
+        { id: 'confirm', name: 'Confirmação' },
+    ];
+
+    const stepIndex = steps.findIndex(s => s.id === step);
+    const primaryColorClass = 'bg-amber-700';
+    const secondaryColorClass = 'text-amber-700';
+    const trackColorClass = 'bg-amber-400';
+
+    return (
+        <div className="flex justify-between items-center max-w-2xl mx-auto mb-10">
+            {steps.map((s, index) => (
+                <React.Fragment key={s.id}>
+                    <div className="flex flex-col items-center">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white transition-all duration-300 ${
+                            index <= stepIndex ? primaryColorClass : 'bg-gray-300'
+                        }`}>
+                            {index < stepIndex ? <ChevronRight className="w-5 h-5 transform rotate-180" /> : index + 1}
+                        </div>
+                        <span className={`text-sm mt-1 hidden md:block ${index <= stepIndex ? `${secondaryColorClass} font-semibold` : 'text-gray-500'}`}>
+                            {s.name}
+                        </span>
+                    </div>
+                    {index < steps.length - 1 && (
+                        <div className={`flex-1 h-1 transition-all duration-300 ${index < stepIndex ? trackColorClass : 'bg-gray-300'}`}></div>
+                    )}
+                </React.Fragment>
+            ))}
+        </div>
+    );
+};
+
+// Componente para a visualização do produto (Card)
+const ProductCard = ({ product, addToCart, openAcaiModal }) => {
+  
+  const buttonClass = 'bg-amber-600 hover:bg-amber-700';
+  const tagColorClass = 'bg-amber-600';
+  const isAcai = product.id === ACAI_ID;
+
+  let categoryTag = 'Doce';
+  let tagIcon = Cake; 
+  
+  switch(product.category) {
+      case 'bolos': categoryTag = 'Bolo'; tagIcon = Cake; break;
+      case 'copo_felicidade': categoryTag = 'Copo'; tagIcon = Heart; break;
+      case 'brownie': categoryTag = 'Brownie'; tagIcon = Cookie; break;
+      case 'acai': categoryTag = 'Açaí'; tagIcon = IceCream; break;
+      case 'salgado': categoryTag = 'Salgado'; tagIcon = Utensils; break;
+      default: categoryTag = 'Item'; tagIcon = Sunrise;
+  }
+
+  const TagIcon = tagIcon;
+
+  // Determina a ação ao clicar
+  const handleAction = () => {
+      if (isAcai) {
+          openAcaiModal(product);
+      } else {
+          addToCart(product);
+      }
+  };
+
+
+  return (
+    <div className={`flex flex-col rounded-xl shadow-lg transition duration-300 transform hover:scale-[1.02] overflow-hidden bg-white`}>
+        {/* Imagem do Produto */}
+        <div className="h-40 overflow-hidden relative">
+            <img 
+                src={product.imageUrl} 
+                alt={product.name} 
+                className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/400x250/cccccc/333333?text=Doce+É+Ser"; }}
+            />
+            <div className={`absolute top-0 right-0 p-2 rounded-bl-lg ${tagColorClass} text-white text-xs font-bold flex items-center gap-1`}>
+                <TagIcon className='w-3 h-3'/> {categoryTag}
+            </div>
+        </div>
+
+        <div className="p-4 flex-grow flex flex-col justify-between">
+            <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-1">{product.name}</h3>
+                <p className={`text-sm mb-3 text-gray-600`}>{product.description}</p>
+            </div>
+            
+            <div className="mt-4 flex justify-between items-center pt-2 border-t border-gray-100">
+                {/* Preço base, para açaí será o preço inicial */}
+                <span className="text-2xl font-extrabold text-amber-700">R$ {product.price.toFixed(2).replace('.', ',')}</span>
+                <button 
+                onClick={handleAction}
+                className={`text-white p-3 rounded-full shadow-md ${buttonClass} transition duration-150 flex items-center gap-1 text-sm`}
+                >
+                {isAcai ? <IceCream className="w-5 h-5" /> : <Plus className="w-5 h-5" />} 
+                {isAcai ? 'Customizar' : 'Adicionar'}
+                </button>
+            </div>
+        </div>
+    </div>
+  );
+};
+
+// Página do Menu (Listagem de produtos)
+const MenuPage = ({ setCart, activeCategory, setActiveCategory, openAcaiModal }) => {
+  const filteredProducts = useMemo(() => {
+    if (activeCategory === 'all') {
+      return initialProducts;
+    }
+    return initialProducts.filter(p => p.category === activeCategory);
+  }, [activeCategory]);
+
+  const addToCart = (product) => {
+    // Lógica para itens NÃO customizáveis: agrupa por ID
+    setCart(prevCart => {
+      // Procura por um item existente que não seja customizado
+      const existingItem = prevCart.find(item => item.id === product.id && !item.isCustom);
+      
+      if (existingItem) {
+        return prevCart.map(item =>
+          item.id === product.id && !item.isCustom ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        // Adiciona item padrão
+        return [...prevCart, { ...product, quantity: 1, isCustom: false }];
+      }
+    });
+  };
+  
+  const getCategoryColorClass = (key, isActive) => {
+    const baseClass = 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+    const activeClass = 'bg-amber-700 text-white hover:bg-amber-800'; 
+
+    if (isActive) {
+        return activeClass; 
+    }
+    return baseClass;
+  };
+
+
+  return (
+    <div className="p-4 md:p-8">
+      <h2 className="text-3xl md:text-4xl font-extrabold text-gray-800 mb-6 border-b pb-2">
+        {categories[activeCategory]}
+      </h2>
+
+      {/* Seletor de Categoria Inovador */}
+      <div className="flex justify-center flex-wrap gap-4 mb-10 p-3 bg-white rounded-xl shadow-inner">
+        {Object.entries(categories).map(([key, value]) => (
+          <button
+            key={key}
+            onClick={() => setActiveCategory(key)}
+            className={`px-5 py-2 rounded-full font-semibold transition-all duration-300 shadow-md
+              ${getCategoryColorClass(key, activeCategory === key)}`
+            }
+          >
+            {value.split(' ')[0]}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {filteredProducts.length > 0 ? (
+          filteredProducts.map(product => (
+            <ProductCard 
+                key={product.id} 
+                product={product} 
+                addToCart={addToCart} 
+                openAcaiModal={openAcaiModal} // Passa a função do modal
+            />
+          ))
+        ) : (
+          <div className="col-span-full text-center py-10 bg-gray-50 rounded-xl">
+            <Ban className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-500">Nenhum produto encontrado nesta categoria.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Componente para exibir o resumo do pedido (usado no carrinho, entrega e pagamento)
+const OrderSummary = ({ cart, deliveryType = 'delivery' }) => {
+    const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    const deliveryFee = deliveryType === 'delivery' ? DELIVERY_FEE : 0.00;
+    const total = subtotal + deliveryFee;
+
+    if (cart.length === 0) return null;
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg h-fit border border-amber-300 sticky top-28">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">Resumo do Pedido</h3>
+            <div className="space-y-3 border-b pb-4">
+                <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal ({cart.length} itens):</span>
+                    <span className="font-medium">R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-gray-600">Taxa de {deliveryType === 'delivery' ? 'Entrega' : 'Serviço'}:</span>
+                    <span className={`font-medium ${deliveryType === 'retirada' ? 'text-green-600' : ''}`}>
+                        {deliveryType === 'retirada' ? 'GRÁTIS' : `R$ ${deliveryFee.toFixed(2).replace('.', ',')}`}
+                    </span>
+                </div>
+            </div>
+            
+            <div className="flex justify-between items-center pt-4">
+                <span className="text-xl font-bold">Total:</span>
+                <span className="text-3xl font-extrabold text-amber-700">R$ {total.toFixed(2).replace('.', ',')}</span>
+            </div>
+            
+            <p className="text-sm font-semibold text-gray-700 mt-4 border-t pt-2">Itens no Carrinho:</p>
+            <div className="max-h-24 overflow-y-auto space-y-1 mt-1">
+                {cart.map((item, index) => (
+                    <p key={item.uniqueId || item.id || index} className="text-xs text-gray-500">
+                        <span className="font-bold text-amber-600">{item.quantity}x</span> {item.name} 
+                        {item.isCustom && item.toppings && item.toppings.length > 0 ? ` (+${item.toppings.length} Adicionais)` : ''}
+                    </p>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
+// 1. Página do Carrinho de Compras
+const CartPage = ({ cart, setCart, setPage }) => {
+  
+  // Função para identificar a chave do item (id para padrão, uniqueId para customizado)
+  const getItemKey = (item) => item.isCustom ? item.uniqueId : item.id;
+
+  const updateQuantity = (itemToUpdate, delta) => {
+    setCart(prevCart => {
+      const key = getItemKey(itemToUpdate);
+      
+      // Item customizado (Açaí): só permite alterar a quantidade daquela linha
+      if (itemToUpdate.isCustom) {
+          const newQuantity = itemToUpdate.quantity + delta;
+
+          if (newQuantity <= 0) {
+            return prevCart.filter(i => getItemKey(i) !== key);
+          }
+          
+          return prevCart.map(i => 
+            getItemKey(i) === key ? { ...i, quantity: newQuantity } : i
+          );
+      }
+      
+      // Item padrão: altera a quantidade e se for 0, remove
+      const newQuantity = itemToUpdate.quantity + delta;
+      
+      if (newQuantity <= 0) {
+        return prevCart.filter(i => getItemKey(i) !== key);
+      }
+      
+      return prevCart.map(i => 
+        getItemKey(i) === key ? { ...i, quantity: newQuantity } : i
+      );
+    });
+  };
+
+  const removeItem = (itemToRemove) => {
+    const key = getItemKey(itemToRemove);
+    setCart(prevCart => prevCart.filter(i => getItemKey(i) !== key));
+  };
+
+
+  return (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
+      <CheckoutStepper step="cart" />
+      
+      {cart.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-xl shadow-lg">
+          <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4"/>
+          <p className="text-xl text-gray-600 font-medium">O seu carrinho está vazio.</p>
+          <button 
+            onClick={() => setPage('menu')} 
+            className="mt-6 text-amber-700 hover:text-amber-900 font-semibold flex items-center mx-auto"
+          >
+            <ChevronRight className="w-5 h-5"/> Voltar ao Menu
+          </button>
+        </div>
+      ) : (
+        <div className="lg:flex lg:space-x-8">
+          
+          {/* Lista de Itens */}
+          <div className="flex-grow space-y-4">
+             <h3 className="text-2xl font-bold text-gray-800 mb-4">Itens Selecionados</h3>
+            {cart.map(item => (
+              <div key={getItemKey(item)} className="flex items-center bg-white p-4 rounded-xl shadow-md border-l-4 border-amber-600">
+                <div className="flex-grow">
+                  <h4 className="font-semibold text-lg">{item.name}</h4>
+                  <p className="text-sm text-gray-500">R$ {item.price.toFixed(2).replace('.', ',')} / un</p>
+                  
+                  {/* Detalhes para itens customizados */}
+                  {item.isCustom && item.toppings && item.toppings.length > 0 && (
+                      <div className="text-xs mt-1 p-1 bg-amber-50 rounded-md inline-block">
+                          <span className="font-bold">Adicionais:</span> {item.toppings.join(', ')}
+                      </div>
+                  )}
+                  {item.isCustom && item.toppings.length === 0 && (
+                       <div className="text-xs mt-1 p-1 bg-gray-100 rounded-md inline-block">
+                          <span className="font-bold">Adicionais:</span> Nenhum
+                      </div>
+                  )}
+
+                </div>
+                
+                <div className="flex items-center space-x-3 mx-4">
+                  <button onClick={() => updateQuantity(item, -1)} className="p-1 border rounded-full hover:bg-gray-100">
+                    <Minus className="w-4 h-4 text-amber-600" />
+                  </button>
+                  <span className="font-bold">{item.quantity}</span>
+                  <button onClick={() => updateQuantity(item, 1)} className="p-1 border rounded-full hover:bg-gray-100">
+                    <Plus className="w-4 h-4 text-amber-600" />
+                  </button>
+                </div>
+
+                <div className="w-20 text-right font-bold text-lg text-amber-700">
+                  R$ ${(item.price * item.quantity).toFixed(2).replace('.', ',')}
+                </div>
+                
+                <button onClick={() => removeItem(item)} className="ml-4 p-1 text-red-500 hover:text-red-700 transition">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
+             <button 
+                onClick={() => setPage('menu')} 
+                className="mt-6 text-amber-700 hover:text-amber-900 font-semibold flex items-center"
+             >
+                <ChevronRight className="w-5 h-5 transform rotate-180 mr-1 inline-block"/> Continuar a Comprar
+            </button>
+          </div>
+          
+          {/* Resumo e Ação */}
+          <div className="lg:w-80 mt-8 lg:mt-0">
+            <OrderSummary cart={cart} deliveryType='delivery' />
+            <button 
+                onClick={() => setPage('delivery')} 
+                className="w-full mt-6 bg-amber-700 text-white py-3 rounded-lg font-bold text-lg hover:bg-amber-800 transition duration-200 shadow-xl"
+            >
+                Prosseguir para a Entrega
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+// 2. Página de Entrega/Retirada
+const DeliveryPage = ({ cart, setPage, deliveryType, setDeliveryType }) => {
+    return (
+        <div className="p-4 md:p-8 max-w-6xl mx-auto">
+            <CheckoutStepper step="delivery" />
+            <div className="lg:flex lg:space-x-8">
+                
+                <div className="flex-grow space-y-6">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4">1. Escolha como receber o seu pedido</h3>
+                    
+                    {/* Opções de Entrega/Retirada */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                        
+                        {/* Entrega (Delivery) */}
+                        <label className={`block p-6 rounded-xl shadow-lg border-2 cursor-pointer transition duration-300 ${
+                            deliveryType === 'delivery' ? 'border-amber-600 bg-amber-50' : 'border-gray-200 bg-white hover:shadow-xl'
+                        }`}>
+                            <input 
+                                type="radio" 
+                                name="delivery_option" 
+                                value="delivery" 
+                                checked={deliveryType === 'delivery'} 
+                                onChange={() => setDeliveryType('delivery')}
+                                className="hidden"
+                            />
+                            <div className="flex items-center space-x-4">
+                                <Truck className={`w-8 h-8 ${deliveryType === 'delivery' ? 'text-amber-600' : 'text-gray-500'}`} />
+                                <div>
+                                    <span className="font-bold text-xl block">Entrega (Delivery)</span>
+                                    <span className="text-sm text-gray-600">Receba em sua casa. Taxa: R$ {DELIVERY_FEE.toFixed(2).replace('.', ',')}</span>
+                                </div>
+                            </div>
+                            {deliveryType === 'delivery' && (
+                                <div className="mt-4 p-3 bg-white border border-amber-200 rounded-lg">
+                                    <h4 className="font-semibold mb-2">Detalhes da Entrega (Simulação)</h4>
+                                    <input type="text" placeholder="CEP" className="w-full p-2 border rounded-md mb-2 focus:ring-amber-500 focus:border-amber-500"/>
+                                    <input type="text" placeholder="Rua, Número, Bairro" className="w-full p-2 border rounded-md focus:ring-amber-500 focus:border-amber-500"/>
+                                </div>
+                            )}
+                        </label>
+
+                        {/* Retirada (Pickup) */}
+                        <label className={`block p-6 rounded-xl shadow-lg border-2 cursor-pointer transition duration-300 ${
+                            deliveryType === 'retirada' ? 'border-amber-600 bg-amber-50' : 'border-gray-200 bg-white hover:shadow-xl'
+                        }`}>
+                            <input 
+                                type="radio" 
+                            name="delivery_option" 
+                                value="retirada" 
+                                checked={deliveryType === 'retirada'} 
+                                onChange={() => setDeliveryType('retirada')}
+                                className="hidden"
+                            />
+                            <div className="flex items-center space-x-4">
+                                <MapPin className={`w-8 h-8 ${deliveryType === 'retirada' ? 'text-amber-600' : 'text-gray-500'}`} />
+                                <div>
+                                    <span className="font-bold text-xl block">Levantamento na Loja</span>
+                                    <span className="text-sm text-gray-600">Morada: Rua Servidão Unidos 478</span>
+                                </div>
+                            </div>
+                             {deliveryType === 'retirada' && (
+                                <div className="mt-4 p-3 bg-white border border-amber-200 rounded-lg">
+                                    <div className="flex items-center text-sm text-gray-700">
+                                        <Clock className="w-4 h-4 mr-2"/> Disponível em aproximadamente 30 minutos após a confirmação.
+                                    </div>
+                                    <p className='mt-2 text-xs text-gray-500'>Por favor, digite seu nome e telefone para a retirada.</p>
+                                    <input type="text" placeholder="Seu Nome" className="w-full p-2 border rounded-md mt-2 focus:ring-amber-500 focus:border-amber-500"/>
+                                    <input type="text" placeholder="Seu Telefone" className="w-full p-2 border rounded-md mt-2 focus:ring-amber-500 focus:border-amber-500"/>
+
+                                </div>
+                            )}
+                        </label>
+                    </div>
+
+                    <button 
+                        onClick={() => setPage('payment')} 
+                        className="w-full bg-amber-700 text-white py-3 rounded-lg font-bold text-lg hover:bg-amber-800 transition duration-200 shadow-xl mt-6"
+                    >
+                        Prosseguir para o Pagamento
+                    </button>
+                    <button 
+                        onClick={() => setPage('cart')} 
+                        className="w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-300 transition duration-200"
+                    >
+                        <ChevronRight className="w-5 h-5 transform rotate-180 mr-1 inline-block"/> Voltar ao Carrinho
+                    </button>
+
+                </div>
+                
+                {/* Resumo do Pedido */}
+                <div className="lg:w-80 mt-8 lg:mt-0">
+                    <OrderSummary cart={cart} deliveryType={deliveryType} />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Componente de Detalhes do Pagamento PIX
+const PixPaymentDetails = ({ total }) => {
+    
+    const [copyStatus, setCopyStatus] = useState('Copiar Chave');
+
+    // Dados reais ATUALIZADOS
+    const pixKeyFormatted = REAL_PIX_KEY; 
+    const qrCodeImage = REAL_PIX_QR_CODE_URL;
+    const keyToCopy = REAL_PIX_KEY_RAW; // Chave crua para copiar
+    const recipientName = REAL_PIX_RECIPIENT_NAME;
+
+    // Função para copiar a chave Pix
+    const handleCopy = () => {
+        // Uso de execCommand para compatibilidade com ambiente iframe
+        const el = document.createElement('textarea');
+        el.value = keyToCopy;
+        document.body.appendChild(el);
+        el.select();
+        try {
+            document.execCommand('copy');
+            setCopyStatus('Copiado!');
+        } catch (err) {
+            console.error('Falha ao copiar:', err);
+            setCopyStatus('Erro ao Copiar');
+        }
+        document.body.removeChild(el);
+
+        setTimeout(() => setCopyStatus('Copiar Chave'), 3000);
+    };
+
+    return (
+        <div className="p-6 bg-white rounded-xl shadow-xl border border-green-400 mt-4 text-center">
+            <div className="flex items-center justify-center space-x-2 text-2xl font-bold text-green-700 mb-4">
+                <Zap className="w-6 h-6"/> Pagamento via Pix
+            </div>
+            
+            <p className="text-gray-700 mb-4">Escaneie o QR Code ou use a chave Copia e Cola no seu aplicativo bancário.</p>
+            
+            {/* Display do QR Code */}
+            <div className="flex justify-center mb-6">
+                <img 
+                    src={qrCodeImage} 
+                    alt="QR Code Pix" 
+                    className="w-48 h-48 border-4 border-green-500 rounded-lg shadow-lg"
+                    onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/200x200/cccccc/333333?text=QR+Code+Indisponível"; }}
+                />
+            </div>
+
+            {/* Detalhes do Beneficiário */}
+            <div className="text-left mb-6 p-4 bg-green-50 rounded-lg">
+                <p className="text-sm font-semibold text-gray-800">Valor a Pagar:</p>
+                <p className="text-3xl font-extrabold text-green-700 mb-2">R$ {total.toFixed(2).replace('.', ',')}</p>
+                
+                <p className="text-sm font-semibold text-gray-800">Beneficiário:</p>
+                <p className="text-base text-gray-600">{recipientName}</p>
+                
+                <p className="text-sm font-semibold text-gray-800 mt-2">Chave Pix (CNPJ):</p>
+                <p className="text-base text-gray-600">{pixKeyFormatted}</p>
+            </div>
+
+            {/* Chave Copia e Cola */}
+            <div className="text-left mb-4">
+                <p className="font-semibold text-gray-800">Chave Copia e Cola (Apenas a Chave Pix):</p>
+                <div className="flex mt-2">
+                    <input 
+                        type="text" 
+                        readOnly 
+                        value={keyToCopy} 
+                        className="flex-grow p-3 border border-gray-300 rounded-l-lg bg-gray-50 text-sm truncate"
+                        title={keyToCopy}
+                    />
+                    <button 
+                        onClick={handleCopy} 
+                        className={`p-3 rounded-r-lg font-bold text-sm flex items-center transition duration-200 ${
+                            copyStatus === 'Copiado!' ? 'bg-green-600 text-white' : 'bg-amber-700 text-white hover:bg-amber-800'
+                        }`}
+                    >
+                        <Copy className="w-4 h-4 mr-1"/> {copyStatus}
+                    </button>
+                </div>
+                <p className="text-xs text-red-500 mt-1">
+                    Este QR Code e Chave são baseados nas informações fornecidas. O valor é atualizado automaticamente.
+                </p>
+            </div>
+        </div>
+    );
+};
+
+
+// 3. Página de Pagamento
+const PaymentPage = ({ cart, setPage, deliveryType, paymentMethod, setPaymentMethod, setCart }) => {
+    
+    const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    const deliveryFee = deliveryType === 'delivery' ? DELIVERY_FEE : 0.00;
+    const totalOrderValue = subtotal + deliveryFee;
+
+    const handleFinalize = () => {
+        const selectedMethod = PAYMENT_METHODS.find(m => m.id === paymentMethod)?.name || 'Não Selecionado';
+        
+        console.log(`Pedido Finalizado!\n\nTipo: ${deliveryType === 'delivery' ? 'Entrega' : 'Levantamento'}\nPagamento: ${selectedMethod}`);
+        
+        // Simulação: Limpa o carrinho e volta ao menu
+        setCart([]);
+        setPage('menu'); 
+    };
+
+    return (
+        <div className="p-4 md:p-8 max-w-6xl mx-auto">
+            <CheckoutStepper step="payment" />
+            <div className="lg:flex lg:space-x-8">
+                
+                <div className="flex-grow space-y-6">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4">2. Selecione a Forma de Pagamento</h3>
+                    
+                    {/* Opções de Pagamento */}
+                    <div className="space-y-4">
+                        {PAYMENT_METHODS.map(method => {
+                            const Icon = method.icon;
+                            return (
+                                <label key={method.id} className={`block p-6 rounded-xl shadow-lg border-2 cursor-pointer transition duration-300 ${
+                                    paymentMethod === method.id ? 'border-amber-600 bg-amber-50' : 'border-gray-200 bg-white hover:shadow-xl'
+                                }`}>
+                                    <input 
+                                        type="radio" 
+                                        name="payment_option" 
+                                        value={method.id} 
+                                        checked={paymentMethod === method.id} 
+                                        onChange={() => setPaymentMethod(method.id)}
+                                        className="hidden"
+                                    />
+                                    <div className="flex items-center space-x-4">
+                                        <Icon className={`w-8 h-8 ${paymentMethod === method.id ? 'text-amber-600' : 'text-gray-500'}`} />
+                                        <div>
+                                            <span className="font-bold text-xl block">{method.name}</span>
+                                            <span className="text-sm text-gray-600">{method.details}</span>
+                                        </div>
+                                    </div>
+                                    {/* Campo extra para Dinheiro (Troco) */}
+                                    {paymentMethod === method.id && method.id === 'cash' && (
+                                        <div className="mt-4">
+                                            <input 
+                                                type="text" 
+                                                placeholder="Troco para (opcional)" 
+                                                className="w-full p-2 border rounded-md focus:ring-amber-500 focus:border-amber-500"
+                                            />
+                                        </div>
+                                    )}
+                                </label>
+                            );
+                        })}
+                    </div>
+                    
+                    {/* Detalhes do PIX - Somente aparece se o PIX for selecionado */}
+                    {paymentMethod === 'pix' && <PixPaymentDetails total={totalOrderValue} />}
+
+
+                    <button 
+                        onClick={handleFinalize} 
+                        disabled={!paymentMethod || cart.length === 0}
+                        className={`w-full py-3 rounded-lg font-bold text-lg transition duration-200 shadow-xl mt-6 ${
+                            paymentMethod && cart.length > 0
+                                ? 'bg-green-600 text-white hover:bg-green-700'
+                                : 'bg-gray-400 text-gray-700 cursor-not-allowed'
+                        }`}
+                    >
+                        {paymentMethod ? 'Confirmar Pedido e Pagar (Simulação)' : 'Selecione um método de pagamento'}
+                    </button>
+                    <button 
+                        onClick={() => setPage('delivery')} 
+                        className="w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-300 transition duration-200"
+                    >
+                        <ChevronRight className="w-5 h-5 transform rotate-180 mr-1 inline-block"/> Voltar à Entrega
+                    </button>
+
+                </div>
+                
+                {/* Resumo do Pedido */}
+                <div className="lg:w-80 mt-8 lg:mt-0">
+                    <OrderSummary cart={cart} deliveryType={deliveryType} />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// 4. Página "Sobre Nós" (Simples)
+const AboutPage = ({ setPage }) => (
+    <div className="p-4 md:p-8 max-w-4xl mx-auto text-center py-20 bg-white rounded-xl shadow-lg">
+        <h2 className="text-4xl font-extrabold text-amber-700 mb-4">A Nossa História</h2>
+        <p className="text-lg text-gray-700 mb-8">
+            Nascida da paixão em equilibrar o doce e o salgado, a Doce É Ser é mais do que uma loja: é um ponto de encontro para quem ama a culinária artesanal. Trabalhamos com ingredientes frescos e receitas exclusivas para garantir que cada mordida seja uma experiência inesquecível.
+        </p>
+        <div className="flex justify-center space-x-6 text-gray-500">
+            <div className="flex items-center"><MapPin className="w-5 h-5 mr-2"/> Rua Servidão Unidos 478</div>
+            <div className="flex items-center"><Clock className="w-5 h-5 mr-2"/> Seg - Sáb: 10h às 20h</div>
+        </div>
+        
+        {/* Créditos Adicionados */}
+        <p className="mt-8 text-sm text-gray-500">
+            Desenvolvido por <span className="font-bold text-amber-600">@DivulgaJà</span>
+        </p>
+        
+        <button 
+            onClick={() => setPage('menu')} 
+            className="mt-10 bg-amber-700 text-white py-3 px-8 rounded-lg font-bold hover:bg-amber-800 transition duration-200 shadow-md"
+        >
+            Ver Menu
+        </button>
+    </div>
+);
+
+
+// 5. NOVA Página de Galeria (Instagram)
+const GalleryPage = () => {
+    
+    // Simulação do componente de post do Instagram (usando o link real)
+    const InstagramEmbedPlaceholder = ({ item }) => {
+        // Gera cores diferentes baseadas no ID para dar variedade visual
+        const colors = [
+            { bg: 'bg-yellow-100', text: 'text-amber-800', border: 'border-amber-500' },
+            { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-500' },
+            { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-500' },
+            { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-500' },
+            { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-500' },
+            { bg: 'bg-pink-100', text: 'text-pink-800', border: 'border-pink-500' },
+        ];
+        const { bg, text, border } = colors[(item.id - 1) % colors.length];
+
+        return (
+            <a 
+                href={item.url} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="relative overflow-hidden rounded-xl shadow-lg bg-white transition duration-300 transform hover:scale-[1.03] border-4 border-dashed cursor-pointer block"
+            >
+                <div className={`w-full h-80 flex items-center justify-center text-center p-4 ${bg} ${border}`}>
+                    <div className={`p-4 bg-white bg-opacity-90 rounded-lg font-bold shadow-xl ${text}`}>
+                        <Instagram className={`w-8 h-8 mx-auto mb-2 text-pink-600`}/>
+                        <p className="text-lg">Post: {item.type}</p>
+                        <p className="text-xs font-normal mt-1 text-gray-600">
+                            (Link Real: Clique para ver no Instagram)
+                        </p>
+                        <p className="text-xs font-normal mt-1 text-amber-700 break-words max-w-[200px] mx-auto opacity-70">
+                            {item.url.substring(0, 40)}...
+                        </p>
+                    </div>
+                </div>
+            </a>
+        );
+    };
+    
+    return (
+        <div className="p-4 md:p-8 max-w-7xl mx-auto">
+            <h2 className="text-4xl font-extrabold text-amber-700 mb-4 flex items-center">
+                <Camera className="w-8 h-8 mr-3"/> Galeria Doce É Ser
+            </h2>
+            <p className="text-lg text-gray-700 mb-8 max-w-3xl">
+                Confira os posts mais recentes dos nossos produtos. Clique em qualquer card para ser redirecionado ao post real no Instagram!
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {INSTAGRAM_POSTS.map(item => (
+                    <InstagramEmbedPlaceholder key={item.id} item={item} />
+                ))}
+            </div>
+            
+            <div className="mt-12 text-center">
+                <a 
+                    href="https://www.instagram.com/doceeser" // URL ATUALIZADA PARA O PERFIL DO USUÁRIO
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-8 py-3 border border-transparent text-base font-bold rounded-full shadow-xl text-white bg-pink-600 hover:bg-pink-700 transition duration-300"
+                >
+                    <Instagram className="w-5 h-5 mr-2"/>
+                    Acompanhe-nos no Instagram
+                </a>
+            </div>
+        </div>
+    );
+};
+
+
+// --- COMPONENTE PRINCIPAL ---
+const App = () => {
+  const [page, setPage] = useState('menu'); 
+  const [cart, setCart] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('all'); 
+  const [deliveryType, setDeliveryType] = useState('delivery'); 
+  const [paymentMethod, setPaymentMethod] = useState(null); 
+  
+  // Estados para o Modal de Customização do Açaí
+  const [isAcaiModalOpen, setIsAcaiModalOpen] = useState(false);
+  const [acaiProductToCustomize, setAcaiProductToCustomize] = useState(null);
+
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Função para abrir o modal de customização do Açaí
+  const openAcaiModal = (product) => {
+      setAcaiProductToCustomize(product);
+      setIsAcaiModalOpen(true);
+  };
+  
+  // Função para fechar o modal
+  const closeAcaiModal = () => {
+      setIsAcaiModalOpen(false);
+      setAcaiProductToCustomize(null);
+  };
+
+  const cartItemCount = useMemo(() => cart.reduce((total, item) => total + item.quantity, 0), [cart]);
+
+  // Efeito 1: Inicialização do Firebase e Autenticação
+  useEffect(() => {
+    if (!auth) {
+        setIsAuthReady(true);
+        setIsLoading(false);
+        console.warn("Firebase/Firestore não configurado. Os dados do carrinho NÃO serão persistidos.");
+        return;
+    }
+
+    const signInUser = async () => {
+        try {
+            const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+            
+            if (initialToken) {
+                await signInWithCustomToken(auth, initialToken);
+            } else {
+                await signInAnonymously(auth);
+            }
+        } catch (error) {
+            console.error("Erro na autenticação do Firebase:", error);
+            await signInAnonymously(auth);
+        }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+            setUserId(user.uid);
+        } else {
+            signInUser().then(() => {
+                setIsAuthReady(true);
+            });
+        }
+        setIsAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+
+  // Efeito 2: Carregar o Carrinho (READ-ONLY)
+  useEffect(() => {
+    if (!isAuthReady || !userId || !db) return;
+
+    const cartRef = getCartDocRef(userId);
+
+    const unsubscribe = onSnapshot(cartRef, (docSnap) => {
+        if (docSnap.exists() && docSnap.data() && docSnap.data().items) {
+            setCart(docSnap.data().items);
+        } else {
+            setCart([]); 
+        }
+        setIsLoading(false);
+    }, (error) => {
+        console.error("Erro ao carregar o carrinho em tempo real:", error);
+        setIsLoading(false); 
+    });
+
+    return () => {
+        unsubscribe();
+    };
+
+  }, [isAuthReady, userId]); 
+  
+  // Efeito 3: Guardar o Carrinho (WRITE-ONLY com debounce)
+  useEffect(() => {
+    if (!isAuthReady || !userId || !db || isLoading) return; 
+
+    const saveTimeout = setTimeout(() => {
+        saveCartToFirestore(userId, cart);
+    }, 500);
+
+    return () => {
+        clearTimeout(saveTimeout);
+    };
+
+  }, [cart, isAuthReady, userId, isLoading]);
+
+
+  
+  // Renderização da Página
+  const renderPage = () => {
+    if (isLoading) {
+        return (
+             <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+                <Loader2 className="w-16 h-16 text-amber-500 animate-spin"/>
+                <p className="mt-4 text-xl font-semibold text-gray-700">A carregar dados da loja...</p>
+                {userId && <p className="text-sm text-gray-400 mt-2">ID do Utilizador: {userId}</p>}
+            </div>
+        );
+    }
+    
+    switch (page) {
+      case 'menu':
+        return <MenuPage 
+            setCart={setCart} 
+            activeCategory={activeCategory} 
+            setActiveCategory={setActiveCategory} 
+            openAcaiModal={openAcaiModal} // Passa a função do modal
+        />;
+      case 'cart':
+        return <CartPage cart={cart} setCart={setCart} setPage={setPage} />;
+      case 'delivery':
+        if (cart.length === 0) { setPage('menu'); return null; }
+        return <DeliveryPage cart={cart} setPage={setPage} deliveryType={deliveryType} setDeliveryType={setDeliveryType} />;
+      case 'payment':
+        if (cart.length === 0) { setPage('menu'); return null; }
+        return <PaymentPage cart={cart} setPage={setPage} deliveryType={deliveryType} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} setCart={setCart} />;
+      case 'about':
+        return <AboutPage setPage={setPage} />;
+      case 'gallery':
+        return <GalleryPage />; // Nova página de Galeria
+      default:
+        return <MenuPage 
+            setCart={setCart} 
+            activeCategory={activeCategory} 
+            setActiveCategory={setActiveCategory} 
+            openAcaiModal={openAcaiModal}
+        />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans">
+      
+      {/* Navbar */}
+      <header className="sticky top-0 z-50 bg-white shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-20">
+            
+            {/* Logo e Nome */}
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setPage('menu')}>
+              <Cake className="w-8 h-8 text-amber-500" />
+              <Heart className="w-8 h-8 text-amber-500" />
+              <IceCream className="w-8 h-8 text-amber-500" />
+              <h1 className="text-2xl font-extrabold text-gray-900 hidden sm:block">Doce É Ser</h1>
+              <h1 className="text-xl font-extrabold text-gray-900 block sm:hidden">Doce É Ser</h1>
+            </div>
+
+            {/* Navegação */}
+            <nav className="hidden md:flex space-x-6">
+              <button onClick={() => setPage('menu')} className={`text-lg font-medium transition duration-150 p-2 rounded-lg ${page.includes('menu') ? 'text-amber-700 bg-amber-100' : 'text-gray-600 hover:text-amber-700'}`}>
+                <Home className="w-5 h-5 inline mr-1"/> Menu
+              </button>
+              {/* Botão Galeria */}
+              <button onClick={() => setPage('gallery')} className={`text-lg font-medium transition duration-150 p-2 rounded-lg ${page === 'gallery' ? 'text-amber-700 bg-amber-100' : 'text-gray-600 hover:text-amber-700'}`}>
+                <Camera className="w-5 h-5 inline mr-1"/> Galeria
+              </button>
+              {/* Botão Sobre Nós */}
+              <button onClick={() => setPage('about')} className={`text-lg font-medium transition duration-150 p-2 rounded-lg ${page === 'about' ? 'text-amber-700 bg-amber-100' : 'text-gray-600 hover:text-amber-700'}`}>
+                Sobre Nós
+              </button>
+            </nav>
+
+            {/* Botão do Carrinho */}
+            <button 
+              onClick={() => setPage('cart')}
+              className="relative p-3 bg-amber-700 text-white rounded-full shadow-lg hover:bg-amber-800 transition duration-150"
+            >
+              <ShoppingCart className="w-6 h-6" />
+              {cartItemCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-6 h-6 flex items-center justify-center text-xs font-bold bg-red-600 rounded-full border-2 border-white">
+                  {cartItemCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Conteúdo Principal */}
+      <main className="max-w-7xl mx-auto pb-12">
+        {renderPage()}
+      </main>
+      
+      {/* Modal de Customização do Açaí */}
+      {isAcaiModalOpen && acaiProductToCustomize && (
+          <AcaiCustomizationModal 
+              product={acaiProductToCustomize} 
+              closeModal={closeAcaiModal} 
+              setCart={setCart}
+          />
+      )}
+
+      {/* Rodapé (Exibe o userId para fins de debug e colaboração) */}
+      <footer className="w-full bg-gray-800 text-white p-4 text-center text-sm">
+        <p>Desenvolvido por <span className="font-bold text-amber-400">@DivulgaJà</span> | React, Tailwind CSS e Persistência de Dados via Firestore.</p>
+        {userId && (
+            <p className="mt-1 text-xs text-gray-400">ID de Sessão (Firestore): {userId}</p>
+        )}
+      </footer>
+
+    </div>
+  );
+};
+
+export default App;
